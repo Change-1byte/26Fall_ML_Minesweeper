@@ -98,3 +98,16 @@ def test_generated_games():
     # every board lands in exactly one split
     ids = np.arange(100)
     assert (split_mask(ids, "train").astype(int) + split_mask(ids, "val") + split_mask(ids, "test") == 1).all()
+
+
+def test_evaluation_scores_oracle_perfectly():
+    from main import evaluate
+    from model import density
+
+    d = generate(3, seed=1)
+    res = evaluate(d["probs"], d)
+    assert res["probability"]["frontier"]["mae"] == 0
+    for dec in res["decisions"].values():
+        assert dec["overall"]["safest_move_acc"] == 1 and dec["overall"]["missed_safe_rate"] == 0
+    base = evaluate(density(d["visible"], 40), d)
+    assert base["probability"]["frontier"]["mae"] > 0.05
