@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-from data import Board, neighbors
-from solver import brute_force_probabilities, exact_probabilities
+from data import Board, generate, neighbors, split_mask
+from solver import brute_force_probabilities, exact_probabilities, label
 
 X = -1  # covered
 
@@ -63,3 +63,38 @@ def test_matches_brute_force():
         visible, mines = random_tiny_state(rng)
         np.testing.assert_allclose(exact_probabilities(visible, mines),
                                    brute_force_probabilities(visible, mines), atol=1e-12)
+
+
+LOCAL, GLOBAL, MINE_COUNT, UNDET = range(4)
+
+
+@pytest.mark.parametrize("visible, mines, state", [
+    ([[X, X, X], [1, 1, 1]], 1, LOCAL),
+    # chain of clues: the end clues force mines at columns 2 and 9 locally,
+    # but every safe cell needs clues more than 3 columns away
+    ([[X] * 12, [1] + [2] * 10 + [1]], 8, GLOBAL),
+    ([[X, 1, X, X]], 1, MINE_COUNT),
+    ([[X, X], [1, 1]], 1, UNDET),
+])
+def test_state_labels(visible, mines, state):
+    v = np.array(visible)
+    assert label(v, exact_probabilities(v, mines))[1] == state
+
+
+def test_global_example_cells():
+    v = np.array([[X] * 12, [1] + [2] * 10 + [1]])
+    cells, _ = label(v, exact_probabilities(v, 8))
+    assert cells[0].tolist() == [GLOBAL] * 2 + [LOCAL] + [GLOBAL] * 6 + [LOCAL] + [GLOBAL] * 2
+
+
+def test_generated_games():
+    d = generate(2, seed=0)
+    covered = d["visible"] == X
+    assert ((d["cell_labels"] == -1) == ~covered).all()
+    decided = (d["probs"] <= 1e-12) | (d["probs"] >= 1 - 1e-12)
+    # local/global-decided cells must be decided by the full solver, with the true mine value
+    early = covered & (d["cell_labels"] <= GLOBAL)
+    assert decided[early].all() and (d["probs"][early].round() == d["mines"][early]).all()
+    # every board lands in exactly one split
+    ids = np.arange(100)
+    assert (split_mask(ids, "train").astype(int) + split_mask(ids, "val") + split_mask(ids, "test") == 1).all()

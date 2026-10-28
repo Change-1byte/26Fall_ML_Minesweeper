@@ -19,15 +19,16 @@ def _convolve(a, b):
     return out
 
 
-def components(visible):
-    """Split the frontier into independent groups.
+def components(visible, clue_mask=None):
+    """Split the frontier into independent groups, using only clues where clue_mask is True.
 
     Returns (groups, unconstrained): each group is (cells, constraints) where
     constraints are (tuple of indices into cells, mines needed).
     """
     h, w = visible.shape
     cons = []
-    for r, c in np.argwhere(visible != COVERED).tolist():
+    clues = visible != COVERED if clue_mask is None else clue_mask & (visible != COVERED)
+    for r, c in np.argwhere(clues).tolist():
         cov = [n for n in neighbors(r, c, h, w) if visible[n] == COVERED]
         if not 0 <= visible[r, c] <= len(cov):
             raise ValueError(f"impossible clue at {(r, c)}")
@@ -149,3 +150,46 @@ def brute_force_probabilities(visible, num_mines):
     for cell, k in zip(covered, hits):
         probs[cell] = k / n
     return probs
+
+
+LABELS = ["LOCAL", "GLOBAL", "MINE_COUNT", "UNDETERMINED"]
+LOCAL_RADIUS = 4  # 9x9 window = receptive field of the local CNN (four 3x3 convs)
+SAFE_EPS = 1e-12
+
+
+def forced_without_count(visible, clue_mask=None):
+    """1/0 where a cell is a mine/safe in every layout fitting the clues (total mine count ignored), else NaN."""
+    out = np.full(visible.shape, np.nan)
+    for cells, cons in components(visible, clue_mask)[0]:
+        counts, cell_counts = enumerate_group(len(cells), cons)
+        n = sum(counts)
+        if n == 0:
+            raise ValueError("no mine layout is consistent with this board")
+        for cell, per_k in zip(cells, cell_counts):
+            if sum(per_k) in (0, n):
+                out[cell] = sum(per_k) // n
+    return out
+
+
+def label(visible, probs):
+    """Reasoning label per cell (index into LABELS, -1 on revealed) and for the state.
+
+    Cell: LOCAL if decided (p=0 or 1) by clues inside its 9x9 window alone, GLOBAL if by all clues,
+    MINE_COUNT if only with the total mine count, else UNDETERMINED. No mode uses the count but the last.
+    A clue counts as local only if its whole 3x3 neighbourhood is inside the window (so it can't leak
+    cells the CNN can't see), i.e. clues within distance LOCAL_RADIUS - 1 of the target.
+    State: the label of the most local safe cell, UNDETERMINED if no cell is safe.
+    """
+    covered = visible == COVERED
+    no_count = forced_without_count(visible)
+    cells = np.where((probs <= SAFE_EPS) | (probs >= 1 - SAFE_EPS), 2, 3)
+    cells[~np.isnan(no_count)] = 1
+    r0 = LOCAL_RADIUS - 1
+    for r, c in np.argwhere(~np.isnan(no_count)).tolist():  # local-decided is a subset of no-count-decided
+        window = np.zeros_like(covered)
+        window[max(r - r0, 0):r + r0 + 1, max(c - r0, 0):c + r0 + 1] = True
+        if not np.isnan(forced_without_count(visible, window)[r, c]):
+            cells[r, c] = 0
+    cells[~covered] = -1
+    safe = covered & (probs <= SAFE_EPS)
+    return cells, int(cells[safe].min()) if safe.any() else 3
