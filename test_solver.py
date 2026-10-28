@@ -111,3 +111,21 @@ def test_evaluation_scores_oracle_perfectly():
         assert dec["overall"]["safest_move_acc"] == 1 and dec["overall"]["missed_safe_rate"] == 0
     base = evaluate(density(d["visible"], 40), d)
     assert base["probability"]["frontier"]["mae"] > 0.05
+
+
+def test_cnn_shapes_and_receptive_field():
+    import torch
+    from model import CNN, encode
+
+    torch.manual_seed(0)
+    v = Board.new_game(16, 16, 40, seed=0).visible()
+    for g in (False, True):
+        m = CNN(8, global_pool=g)
+        assert m(encode(np.stack([v, v]), 40)).shape == (2, 16, 16)
+        assert m(encode(np.full((1, 9, 30), X), 10)).shape == (1, 9, 30)  # any board size
+        a = encode(np.full((1, 16, 16), X), 40)
+        b = a.clone()
+        b[0, :, 0, 15] = 0
+        b[0, 1, 0, 15] = 1  # reveal a zero 5 columns away from target (0, 10)
+        changed = (m(a)[0, 0, 10] - m(b)[0, 0, 10]).abs() > 0
+        assert changed == g  # only the global model sees outside the 9x9 window
