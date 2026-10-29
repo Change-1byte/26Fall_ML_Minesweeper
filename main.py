@@ -125,7 +125,7 @@ def train(name, global_pool, data, epochs, batch, lr, weight_decay, width, seed)
     print(f"{name}: {n_params} parameters, {len(x)} train states")
     best = float("inf")
     os.makedirs("outputs/checkpoints", exist_ok=True)
-    for ep in range(epochs):
+    for ep in range(epochs):        # Train the CNN using only covered cells
         model.train()
         perm, total = torch.randperm(len(x)), 0.0
         for i in range(0, len(x), batch):
@@ -135,7 +135,9 @@ def train(name, global_pool, data, epochs, batch, lr, weight_decay, width, seed)
             loss.backward()
             opt.step()
             total += loss.item() * len(j)
-        mae = probability_metrics(predict(model, va), va)["frontier"]["mae"]
+        # Evaluate after each epoch;
+        # Save the model with the lowest validation MAE
+        mae = probability_metrics(predict(model, va), va)["frontier"]["mae"]    # validation frontier MAE
         print(f"epoch {ep + 1}: train loss {total / len(x):.4f}  val frontier MAE {mae:.4f}")
         if mae < best:
             best = mae
