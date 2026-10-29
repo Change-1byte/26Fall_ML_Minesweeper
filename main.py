@@ -13,9 +13,14 @@ TIE_EPS = 1e-9  # exact risks closer than this count as tied
 
 
 def _err(pred, probs, m):
+    """Calculate prediction errors for cells selected by the mask."""
     d = pred[m] - probs[m]
-    return {"n": int(m.sum()), "mae": float(np.abs(d).mean()) if m.any() else None,
-            "brier": float((d ** 2).mean()) if m.any() else None}
+    n = int(m.sum())
+    if n == 0:
+        return {"n": 0, "mae": None, "brier": None}
+    mae = float(np.abs(d).mean())
+    brier = float((d ** 2).mean())
+    return {"n": n, "mae": mae, "brier": brier}
 
 
 def probability_metrics(pred, d):
@@ -108,7 +113,9 @@ def train(name, global_pool, data, epochs, batch, lr, weight_decay, width, seed)
 
     torch.manual_seed(seed)
     np.random.seed(seed)
+    # Load training and validation states from different boards.
     tr, va = load(data, "train"), load(data, "val")
+    # Prepare CNN inputs and use oracle probabilities as training labels
     x, y = encode(tr["visible"], tr["num_mines"]), torch.from_numpy(tr["probs"]).float()
     covered = torch.from_numpy(tr["visible"] == COVERED)
     y = torch.nan_to_num(y)
