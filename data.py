@@ -1,12 +1,15 @@
-# fixed board for MVP
+# Manage two kinds of info: mines' positions & board for player(model)
 import numpy as np
 
-COVERED = -1
+COVERED = -1 # unrevealed block
 
+# r for current row, c for current column, 
+# h (height) for number of total rows of the state
+# w (width) for number total colomns of the state
 
 def neighbors(r, c, h, w):
     """Yield the up-to-8 in-bounds neighbours of (r, c)."""
-    for dr in (-1, 0, 1):
+    for dr in (-1, 0, 1):           # offset
         for dc in (-1, 0, 1):
             if (dr or dc) and 0 <= r + dr < h and 0 <= c + dc < w:
                 yield r + dr, c + dc
@@ -26,8 +29,16 @@ def frontier(visible):
 
 def split_mask(board_ids, split):
     """70/15/15 train/val/test by board, so states of one game never cross splits."""
-    b = np.asarray(board_ids) % 20
-    return {"train": b < 14, "val": (b >= 14) & (b < 17), "test": b >= 17}[split]
+    b = np.asarray(board_ids) % 20      # This gives values from 0 to 19
+    if split == "train":
+        return b < 14                   # 20*0.7=14
+    elif split == "val":
+        return (b >= 14) & (b < 17)     # 20*(0.7+0.15)=17
+    elif split == "test":
+        return b >= 17
+    else:
+        raise KeyError("Invalid split. Please choose from 'train', 'val', or 'test'.")
+    # return {"train": b < 14, "val": (b >= 14) & (b < 17), "test": b >= 17}[split]
 
 
 class Board:
