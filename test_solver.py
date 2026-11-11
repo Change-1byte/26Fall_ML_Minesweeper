@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from data import Board, generate, neighbors, split_mask
+from data import COVERED, Board, generate, neighbors, split_mask
 from solver import brute_force_probabilities, exact_probabilities, label
 
 X = -1  # covered
@@ -129,3 +129,32 @@ def test_cnn_shapes_and_receptive_field():
         b[0, 1, 0, 15] = 1  # reveal a zero 5 columns away from target (0, 10)
         changed = (m(a)[0, 0, 10] - m(b)[0, 0, 10]).abs() > 0
         assert changed == g  # only the global model sees outside the 9x9 window
+
+
+def test_bootstrap_paired_and_pooled():
+    from main import bootstrap
+
+    stats = {"x": [[1.0, 3.0, 0.0], [2.0, 2.0, 0.0]]}  # board sums / counts; third board has no cells
+    rows = {(m, k): r for m, k, *r in bootstrap({"local": stats, "global": stats}, n=200)}
+    assert rows[("local", "x")][0] == 1.0  # pooled: 4/4, not the mean of board means
+    assert rows[("global-local", "x")] == [0.0, 0.0, 0.0]  # identical models -> paired diff is exactly 0
+
+
+def test_window_probabilities():
+    from solver import exact_probabilities, window_probabilities
+
+    rng = np.random.default_rng(1)
+    checked = 0
+    for _ in range(20):
+        b = Board.new_game(7, 7, 8, seed=rng)  # small board, so many cells have every clue in their window
+        v = b.visible()
+        w = window_probabilities(v, 8)
+        # a cell whose window holds every clue sees the full problem, so must match the exact solver
+        p = exact_probabilities(v, 8)
+        clues = np.argwhere(v != COVERED)
+        for r, c in np.argwhere(v == COVERED).tolist():
+            if (np.abs(clues - (r, c)).max(axis=1) <= 3).all():
+                assert np.isclose(w[r, c], p[r, c])
+                checked += 1
+        assert np.isnan(w[v != COVERED]).all()
+    assert checked > 20  # not vacuous

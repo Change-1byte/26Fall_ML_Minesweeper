@@ -39,11 +39,11 @@ class CNN(nn.Module):
     Both share the same 1x1 head, so the only difference is access to the whole board.
     """
 
-    def __init__(self, width=64, global_pool=False):
+    def __init__(self, width=64, global_pool=False, dilated=False):
         super().__init__()
         layers, c = [], 11
-        for _ in range(4):
-            layers += [nn.Conv2d(c, width, 3, padding=1), nn.ReLU()]
+        for dil in (1, 2, 4, 8) if dilated else (1, 1, 1, 1):  # dilated: 31x31 view, same parameter count
+            layers += [nn.Conv2d(c, width, 3, padding=dil, dilation=dil), nn.ReLU()]
             c = width
         self.trunk = nn.Sequential(*layers)
         self.mlp = nn.Sequential(nn.Linear(width, width), nn.ReLU()) if global_pool else None

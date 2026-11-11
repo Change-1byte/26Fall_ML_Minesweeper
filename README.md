@@ -16,6 +16,11 @@ The exact solver is the oracle; models are scored against it, not on win rate.
   MAE/Brier on frontier cells by cell and state label, calibration, decision metrics. Decisions are scored twice:
   over all covered cells, and with LOCAL cells removed from the choice ("no_local"), because ~99% of states have a
   local safe move and would otherwise hide every hard decision
+- `bench.py --num-games N`: solver time per state, largest constraint group, solver-agent win rate
+- `main.py report` also writes `bootstrap_test.csv`: 95% CIs from 1000 resamples of test boards, plus paired
+  differences vs the local CNN (rows `model-local`)
+- `main.py train <model> --seed S` (S > 0) saves as `<model>_sS`; `report` writes `seeds_test.csv` (mean/sd/min/max over
+  the seed-0 run and every `_sS` run)
 - `test_solver.py`: board tests, hand-built solver cases, 300 random tiny boards checked against brute force
 
 ```bash
@@ -25,7 +30,9 @@ pytest -q
 python data.py --num-games 300   # ~3 min, prints label stats
 python main.py train local       # Experiment 1
 python main.py train global
-python main.py eval density && python main.py eval local && python main.py eval global
+python main.py train local_bal && python main.py train dilated && python main.py train dilated_bal   # ablations: label-balanced loss, 31x31 view
+for m in density window local global local_bal dilated dilated_bal; do python main.py eval $m; done   # window: exact solver on 9x9 clues (~1 min)
+python bench.py --num-games 20   # solver timing + win rate
 python main.py report            # outputs/metrics/summary_test.csv, outputs/figures/experiment1_test.png
 ```
 

@@ -98,13 +98,13 @@ def enumerate_group(n, constraints):
     return counts, cell_counts
 
 
-def exact_probabilities(visible, num_mines):
+def exact_probabilities(visible, num_mines, clue_mask=None):
     """Exact mine probability of every covered cell given clues and total mine count.
 
     Revealed cells get NaN. Every layout consistent with the visible board is equally likely.
     """
     visible = np.asarray(visible)
-    groups, unconstrained = components(visible)
+    groups, unconstrained = components(visible, clue_mask)  # clue_mask: only these clues count
     solved = [enumerate_group(len(cells), cons) for cells, cons in groups]
     u = len(unconstrained)
     total_poly = [1]
@@ -193,3 +193,21 @@ def label(visible, probs):
     cells[~covered] = -1
     safe = covered & (probs <= SAFE_EPS)
     return cells, int(cells[safe].min()) if safe.any() else 3
+
+
+def window_probabilities(visible, num_mines):
+    """Baseline for the local CNN: each covered cell's exact probability from the clues within LOCAL_RADIUS - 1
+    (the clues whose whole neighbourhood lies in its 9x9 window, as in label()) plus the total mine count,
+    which the CNN also gets as density. NaN on revealed cells."""
+    covered = visible == COVERED
+    probs = np.full(visible.shape, np.nan)
+    probs[covered] = num_mines / covered.sum()  # exact when no clue is in the window
+    r0 = LOCAL_RADIUS - 1
+    has_clue = np.argwhere(~covered)
+    for r, c in np.argwhere(covered).tolist():
+        if (np.abs(has_clue - (r, c)).max(axis=1) > r0).all():
+            continue
+        window = np.zeros_like(covered)
+        window[max(r - r0, 0):r + r0 + 1, max(c - r0, 0):c + r0 + 1] = True
+        probs[r, c] = exact_probabilities(visible, num_mines, window)[r, c]
+    return probs
